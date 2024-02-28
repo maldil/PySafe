@@ -28,7 +28,7 @@ class RadonError(IError):
         return self.halstead
 
     def __eq__(self, other):
-        if isinstance(other, Radon):
+        if isinstance(other, RadonError):
             return other.get_key() == self.get_key()
         return False
 
