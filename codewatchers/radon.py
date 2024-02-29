@@ -1,12 +1,10 @@
-import os
 import re
 import statistics
 import subprocess
-import tempfile
 
 from codewatchers.errors.all_error import AllErrors
-from codewatchers.ichecker import IChecker
 from codewatchers.errors.radon_error import RadonError
+from codewatchers.ichecker import IChecker
 
 
 class NoComplexityDataException(Exception):
@@ -23,33 +21,30 @@ class NoHalsteadMetricsException(Exception):
 
 class Radon(IChecker):
     def run_analysis(self, code: str) -> AllErrors:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_file_path = os.path.join(temp_dir, "temp_code.py")
-            with open(temp_file_path, 'w') as temp_code_file:
-                temp_code_file.write(code)
-            errors = AllErrors()
-            command = ['radon', 'cc', temp_file_path]
+        temp_file_path = self.write_code_to_temp_file(code)
+        errors = AllErrors()
+        command = ['radon', 'cc', temp_file_path]
+        result = subprocess.run(command, capture_output=True, text=True)
+        try:
+            cyclomatic_complexity = Radon.extract_cyclomatic_complexity(result.stdout)
+            command = ['radon', 'mi', temp_file_path]
             result = subprocess.run(command, capture_output=True, text=True)
             try:
-                cyclomatic_complexity = Radon.extract_cyclomatic_complexity(result.stdout)
-                command = ['radon', 'mi', temp_file_path]
+                maintainability_index = Radon.extract_maintainability_index(result.stdout)
+                command = ['radon', 'hal', temp_file_path]
                 result = subprocess.run(command, capture_output=True, text=True)
                 try:
-                    maintainability_index = Radon.extract_maintainability_index(result.stdout)
-                    command = ['radon', 'hal', temp_file_path]
-                    result = subprocess.run(command, capture_output=True, text=True)
-                    try:
-                        halstead_metric = Radon.extrac_halstead_metric(result.stdout)
-                        r_error = RadonError(str(cyclomatic_complexity) + maintainability_index + halstead_metric,
-                                             cyclomatic_complexity, maintainability_index, halstead_metric)
-                        errors.add_item(r_error)
-                        return errors
-                    except NoHalsteadMetricsException as e:
-                        return errors
-                except NoMaintainabilityException as e:
+                    halstead_metric = Radon.extrac_halstead_metric(result.stdout)
+                    r_error = RadonError(str(cyclomatic_complexity) + maintainability_index + halstead_metric,
+                                         cyclomatic_complexity, maintainability_index, halstead_metric)
+                    errors.add_item(r_error)
                     return errors
-            except NoComplexityDataException as e:
+                except NoHalsteadMetricsException as e:
+                    return errors
+            except NoMaintainabilityException as e:
                 return errors
+        except NoComplexityDataException as e:
+            return errors
 
     @staticmethod
     def extrac_halstead_metric(output: str):

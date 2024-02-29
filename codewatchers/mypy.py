@@ -1,38 +1,44 @@
-from codewatchers.ichecker import IChecker
-from codewatchers.errors.all_error import AllErrors
-from codewatchers.errors.mypy_error import MyPyError
+import re
 import subprocess
 import tempfile
-import os
 from pathlib import Path
+
 from codewatchers import util_functions
-import re
+from codewatchers.errors.all_error import AllErrors
+from codewatchers.errors.mypy_error import MyPyError
+from codewatchers.ichecker import IChecker
+
+
 class MyPy(IChecker):
+    @staticmethod
+    def construct_mypy_command(temp_file_path: str) -> list:
+        config_path = Path(__file__).resolve().parent.parent / 'configurations' / 'mypy.ini'
+        if not config_path.exists():
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        return ['mypy', temp_file_path, '--config-file', str(config_path)]
+
+    @staticmethod
+    def parse_mypy_output(output: str) -> AllErrors:
+        all_errors = AllErrors()
+        pattern = r"(?P<file_path>.+?):(?P<line_number>\d+): error: (?P<error_message>.+?\[.+?\])"
+        for match in re.finditer(pattern, output):
+            error_message = match.group('error_message')
+            mypy_error = MyPyError(error_message, error_message, int(match.group('line_number')))
+            all_errors.add_item(mypy_error)
+        return all_errors
+
     def run_analysis(self, code: str) -> AllErrors:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_file_path = os.path.join(temp_dir, "temp_code.py")
+        temp_file_path = self.write_code_to_temp_file(code)
+        command = self.construct_mypy_command(temp_file_path)
 
-            with open(temp_file_path, 'w') as temp_code_file:
-                temp_code_file.write(code)
-
-            current_script = Path(__file__).resolve()
-            project_root = current_script.parent.parent
-            config_path = project_root / 'configurations/mypy.ini'
-            command = ['mypy', temp_file_path, '--config-file', config_path]
+        try:
             result = subprocess.run(command, text=True, capture_output=True)
-            pattern = r"(?P<file_path>.+?):(?P<line_number>\d+): error: (?P<error_message>.+?\[.+?\])"
+        except subprocess.CalledProcessError as e:
+            # Handle subprocess errors, e.g., command execution failure
+            raise RuntimeError(f"Failed to run analysis: {e}")
 
-            # Find all matches of the pattern in the mypy output
-            matches = re.finditer(pattern, result.stdout)
-
-            error = AllErrors()
-            for match in matches:
-                file_path = match.group('file_path')
-                line_number = match.group('line_number')
-                error_message = match.group('error_message')
-                mypy_error = MyPyError(error_message,error_message,int(line_number))
-                error.add_item(mypy_error)
-        return error
+        all_errors = self.parse_mypy_output(result.stdout)
+        return all_errors
 
     @staticmethod
     def decode_mypy_output(result: str):
