@@ -1,11 +1,11 @@
-from codewatchers.errors.ierror import IError
-from codewatchers.ichecker import IChecker
+import os
+import subprocess
+import tempfile
+
 from codewatchers import util_functions
 from codewatchers.all_test_runner import AllErrors
 from codewatchers.errors.pylint_error import PyLintError
-import tempfile
-import os
-import subprocess
+from codewatchers.ichecker import IChecker
 
 
 class PyLint(IChecker):
@@ -23,6 +23,3 @@ class PyLint(IChecker):
                                           int(decoded_result["Line_number"]))
                 all_errors.add_item(flake_error)
             return all_errors
-
-
-
